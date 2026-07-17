@@ -1,195 +1,235 @@
-from django.contrib.auth.password_validation import validate_password
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from rest_framework import serializers
-from rest_framework.validators import UniqueValidator
-from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+from django.contrib.auth.password_validation import validate_password  # Import Django's password validator.
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer  # Import JWT token serializer.
+from rest_framework import serializers  # Import Django REST Framework serializers.
+from rest_framework.validators import UniqueValidator  # Import unique field validator.
 
-from Blog import models as Blog_models
+from Blog import models as Blog_models  # Import blog models.
 
-# Define a custom serializer that inherits from TokenObtainPairSerializer
+
+# Customize the JWT token with additional user information.
 class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
-    '''
-    class MyTokenObtainPairSerializer(TokenObtainPairSerializer):: This line creates a new token serializer called MyTokenObtainPairSerializer that is based on an existing one called TokenObtainPairSerializer. Think of it as customizing the way tokens work.
-    @classmethod: This line indicates that the following function is a class method, which means it belongs to the class itself and not to an instance (object) of the class.
-    def get_token(cls, user):: This is a function (or method) that gets called when we want to create a token for a user. The user is the person who's trying to access something on the website.
-    token = super().get_token(user): Here, it's asking for a regular token from the original token serializer (the one it's based on). This regular token is like a key to enter the website.
-    token['full_name'] = user.full_name, token['email'] = user.email, token['username'] = user.username: This code is customizing the token by adding extra information to it. For example, it's putting the user's full name, email, and username into the token. These are like special notes attached to the key.
-    return token: Finally, the customized token is given back to the user. Now, when this token is used, it not only lets the user in but also carries their full name, email, and username as extra information, which the website can use as needed.
-    '''
-    @classmethod
-    # Define a custom method to get the token for a user
-    def get_token(cls, user):
-        # Call the parent class's get_token method
-        token = super().get_token(user)
 
-        # Add custom claims to the token
+    # Add custom user information to the JWT token.
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
         token['full_name'] = user.full_name
         token['email'] = user.email
         token['username'] = user.username
-        try:
-            token['vendor_id'] = user.vendor.id
-        except:
-            token['vendor_id'] = 0
-
-        # ...
-
-        # Return the token with custom claims
         return token
 
-# Define a serializer for user registration, which inherits from serializers.ModelSerializer
+
+# Serializer for user registration.
 class RegisterSerializer(serializers.ModelSerializer):
-    # Define fields for the serializer, including password and password2
-    password = serializers.CharField(write_only=True, required=True, validators=[validate_password])
-    password2 = serializers.CharField(write_only=True, required=True)
+    # Validate the password using Django's built-in validators.
+    password = serializers.CharField(
+        write_only=True,  # Hide this field from API responses.
+        required=True,    # Make this field required.
+        validators=[validate_password]
+    )
 
+    # Confirm the user's password.
+    password2 = serializers.CharField(
+        write_only=True,  # Hide this field from API responses.
+        required=True     # Make this field required.
+    )
+
+    # Configure serializer options.
     class Meta:
-        # Specify the model that this serializer is associated with
         model = Blog_models.User
-        # Define the fields from the model that should be included in the serializer
-        fields = ('full_name', 'email',  'password', 'password2')
+        fields = ('full_name', 'email', 'password', 'password2')
+        extra_kwargs = {
+            'email': {
+                # Ensure the email address is unique.
+                'validators': [
+                    UniqueValidator(queryset=Blog_models.User.objects.all())
+                ]
+            },
+        }
 
+    # Validate that both password fields match.
     def validate(self, attrs):
-        # Define a validation method to check if the passwords match
         if attrs['password'] != attrs['password2']:
-            # Raise a validation error if the passwords don't match
-            raise serializers.ValidationError({"password": "Password fields didn't match."})
-
-        # Return the validated attributes
+            raise serializers.ValidationError(
+                {"password": "Password fields didn't match."}
+            )
         return attrs
 
+    # Create and return a new user account.
     def create(self, validated_data):
-        # Define a method to create a new user based on validated data
-        user = Blog_models.User.objects.create(
-            full_name=validated_data['full_name'],
+        validated_data.pop('password2')
+        return Blog_models.User.objects.create_user(
             email=validated_data['email'],
+            full_name=validated_data.get('full_name', ''),
+            password=validated_data['password'],
         )
-        email_username, mobile = user.email.split('@')
-        user.username = email_username
 
-        # Set the user's password based on the validated data
-        user.set_password(validated_data['password'])
-        user.save()
 
-        # Return the created user
-        return user
-
+# Serializer for user information.
 class UserSerializer(serializers.ModelSerializer):
 
+    # Configure serializer options.
     class Meta:
         model = Blog_models.User
-        fields = '__all__'
+        fields = ('id', 'username', 'email', 'full_name')
 
+
+# Serializer for user profile information.
 class ProfileSerializer(serializers.ModelSerializer):
+    user = UserSerializer(read_only=True)  # Include user details as read-only.
 
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Profile
-        fields = '__all__'
+        fields = (
+            'id', 'user', 'image', 'full_name', 'bio', 'about',
+            'author', 'country', 'facebook', 'twitter', 'date'
+        )
 
-    def to_representation(self, instance):
-        response = super().to_representation(instance)
-        response['user'] = UserSerializer(instance.user).data
-        return response
 
-class PasswordResetSerializer(serializers.Serializer):
+# Serializer for requesting a password reset.
+class PasswordResetRequestSerializer(serializers.Serializer):
     email = serializers.EmailField()
 
 
+# Serializer for confirming a password reset.
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    email = serializers.EmailField()
+    token = serializers.CharField()
 
+    # Validate the new password.
+    password = serializers.CharField(
+        write_only=True,
+        validators=[validate_password]
+    )
+
+    # Confirm the new password.
+    password2 = serializers.CharField(write_only=True)
+
+    # Validate that both password fields match.
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError(
+                {"password": "Password fields didn't match."}
+            )
+        return attrs
+
+# Serializer for changing the current password.
+class ChangePasswordSerializer(serializers.Serializer):
+    old_password = serializers.CharField()
+
+    # Validate the new password.
+    password = serializers.CharField(
+        write_only=True,
+        validators=[validate_password]
+    )
+
+    # Confirm the new password.
+    password2 = serializers.CharField(write_only=True)
+
+    # Validate that both password fields match.
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError(
+                {"password": "Password fields didn't match."}
+            )
+        return attrs
+
+# Serializer for blog categories.
 class CategorySerializer(serializers.ModelSerializer):
-    post_count = serializers.SerializerMethodField()
+    post_count = serializers.SerializerMethodField()  # Return computed post count.
 
-    '''
-        category.post_set: In Django, when you define a ForeignKey relationship from one model to another 
-        (e.g., Post model having a ForeignKey relationship to the Category model), 
-        Django creates a reverse relationship from the related model back to the model that has the ForeignKey. 
-        By default, this reverse relationship is named <model>_set. In this case, since the Post model has a 
-        ForeignKey to the Category model, Django creates a reverse relationship from Category to Post named post_set. 
-        This allows you to access all Post objects related to a Category instance.
-    '''
-    def get_post_count(self, category):
-        return category.posts.count()
-    
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Category
-        fields = [
-            "id",
-            "title",
-            "image",
-            "slug",
-            "post_count",
-        ]
+        fields = ("id", "title", "image", "slug", "post_count")
 
-    def __init__(self, *args, **kwargs):
-        super(CategorySerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 3
+    # Return the total number of posts in the category.
+    def get_post_count(self, category):
+        return category.posts.count()
 
+# Serializer for blog comments and replies.
 class CommentSerializer(serializers.ModelSerializer):
-    
+    replies = serializers.SerializerMethodField()  # Return nested replies.
+
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Comment
-        fields = "__all__"
+        fields = (
+            "id", "post", "parent", "user", "name", "email",
+            "comment", "reply", "is_approved", "date", "replies"
+        )
+        read_only_fields = ("is_approved", "date", "reply")
 
-    def __init__(self, *args, **kwargs):
-        super(CommentSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 1
+    # Return all replies for a comment.
+    def get_replies(self, obj):
+        if obj.replies.exists():
+            return CommentSerializer(
+                obj.replies.all(),
+                many=True,
+                context=self.context
+            ).data
+        return []
 
-
+# Serializer for blog posts.
 class PostSerializer(serializers.ModelSerializer):
-    comments = CommentSerializer(many=True)
-    
+    comments = CommentSerializer(
+        many=True,
+        read_only=True
+    )  # Include related comments.
+
+    tags = serializers.SlugRelatedField(
+        many=True,
+        read_only=True,
+        slug_field='name'
+    )  # Return tag names.
+
+    like_count = serializers.IntegerField(
+        source='likes.count',
+        read_only=True
+    )  # Return total likes.
+
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Post
-        fields = "__all__"
+        fields = (
+            "id", "user", "title", "image", "description", "content",
+            "tags", "category", "status", "featured", "view",
+            "likes", "like_count", "slug", "date", "publish_at",
+            "comments"
+        )
+        read_only_fields = ("user", "slug", "view", "likes", "date")
 
-    def __init__(self, *args, **kwargs):
-        super(PostSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 3
+# Serializer for follow relationships.
+class FollowSerializer(serializers.ModelSerializer):
 
+    # Configure serializer options.
+    class Meta:
+        model = Blog_models.Follow
+        fields = ("id", "follower", "following", "date")
 
-
+# Serializer for bookmarked posts.
 class BookmarkSerializer(serializers.ModelSerializer):
-    
+
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Bookmark
-        fields = "__all__"
+        fields = ("id", "user", "post", "date")
+        read_only_fields = ("user",)
 
+# Serializer for user notifications.
+class NotificationSerializer(serializers.ModelSerializer):
 
-    def __init__(self, *args, **kwargs):
-        super(BookmarkSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 3
-    
-class NotificationSerializer(serializers.ModelSerializer):  
-
+    # Configure serializer options.
     class Meta:
         model = Blog_models.Notification
-        fields = "__all__"
+        fields = ("id", "user", "post", "type", "seen", "date")
+        read_only_fields = ("user", "post", "type")
 
-    def __init__(self, *args, **kwargs):
-        super(NotificationSerializer, self).__init__(*args, **kwargs)
-        request = self.context.get('request')
-        if request and request.method == 'POST':
-            self.Meta.depth = 0
-        else:
-            self.Meta.depth = 3
-
-class AuthorStats(serializers.Serializer):
-    views = serializers.IntegerField(default=0)
-    posts = serializers.IntegerField(default=0)
-    likes = serializers.IntegerField(default=0)
-    bookmarks = serializers.IntegerField(default=0)
+# Serializer for author dashboard statistics.
+class AuthorStatsSerializer(serializers.Serializer):
+    views = serializers.IntegerField()       # Store total views.
+    posts = serializers.IntegerField()       # Store total posts.
+    likes = serializers.IntegerField()       # Store total likes.
+    bookmarks = serializers.IntegerField()   # Store total bookmarks.
+    followers = serializers.IntegerField()   # Store total followers.
