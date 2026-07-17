@@ -1,461 +1,425 @@
-from django.http import HttpResponse
+import logging
+import random
 
-
-def index(request):
-    return HttpResponse("Blog app is running")
-
-from django.shortcuts import render
-from django.http import JsonResponse
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
 from django.core.mail import EmailMultiAlternatives
 from django.template.loader import render_to_string
 from django.conf import settings
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from django.db.models import Sum
-# Restframework
-from rest_framework import status
-from rest_framework.decorators import api_view, APIView
-from rest_framework.response import Response
-from rest_framework_simplejwt.views import TokenObtainPairView
-from rest_framework import generics
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from django.db.models import Sum, Count
+from django.shortcuts import get_object_or_404
+
+from rest_framework import generics, status
 from rest_framework.decorators import api_view, permission_classes
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from drf_yasg import openapi
 from drf_yasg.utils import swagger_auto_schema
-from datetime import datetime
+from drf_yasg import openapi
 
-# Others
-import json
-import random
-
-# Custom Imports
 from Blog import serializers as Blog_serializer
 from Blog import models as Blog_models
 
+logger = logging.getLogger(__name__)
 
-# This code defines a DRF View class called MyTokenObtainPairView, which inherits from TokenObtainPairView.
+
+# --------------------------------------------------------------------------
+# Auth
+# --------------------------------------------------------------------------
 class MyTokenObtainPairView(TokenObtainPairView):
-    # Here, it specifies the serializer class to be used with this view.
     serializer_class = Blog_serializer.MyTokenObtainPairSerializer
 
-# This code defines another DRF View class called RegisterView, which inherits from generics.CreateAPIView.
+
 class RegisterView(generics.CreateAPIView):
-    # It sets the queryset for this view to retrieve all User objects.
     queryset = Blog_models.User.objects.all()
-    # It specifies that the view allows any user (no authentication required).
     permission_classes = (AllowAny,)
-    # It sets the serializer class to be used with this view.
     serializer_class = Blog_serializer.RegisterSerializer
 
 
-# This code defines another DRF View class called ProfileView, which inherits from generics.RetrieveAPIView and used to show user profile view.
 class ProfileView(generics.RetrieveUpdateAPIView):
-    permission_classes = (AllowAny,)
+    """Own profile only. User is derived from the token, never from the URL."""
+    permission_classes = (IsAuthenticated,)
     serializer_class = Blog_serializer.ProfileSerializer
 
     def get_object(self):
-        user_id = self.kwargs['user_id']
+        return self.request.user.profile
 
-        user = Blog_models.User.objects.get(id=user_id)
-        profile = Blog_models.Profile.objects.get(user=user)
-        return profile
-    
 
-def generate_numeric_otp(length=7):
-        # Generate a random 7-digit OTP
-        otp = ''.join([str(random.randint(0, 9)) for _ in range(length)])
-        return otp
+class ChangePasswordView(generics.UpdateAPIView):
+    permission_classes = (IsAuthenticated,)
+    serializer_class = Blog_serializer.ChangePasswordSerializer
 
-class PasswordEmailVerify(generics.RetrieveAPIView):
+    def update(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        user = request.user
+        if not user.check_password(serializer.validated_data['old_password']):
+            return Response({"old_password": "Wrong password."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(serializer.validated_data['password'])
+        user.save()
+        return Response({"message": "Password changed successfully."},
+                        status=status.HTTP_200_OK)
+
+
+def generate_numeric_otp(length=6):
+    return ''.join([str(random.randint(0, 9)) for _ in range(length)])
+
+
+class PasswordResetRequestView(generics.GenericAPIView):
+    """Sends a signed, single-use reset link. No state stored on the user."""
     permission_classes = (AllowAny,)
-    serializer_class = Blog_serializer.UserSerializer
-    
-    def get_object(self):
-        email = self.kwargs['email']
-        user = Blog_models.User.objects.get(email=email)
-        
+    serializer_class = Blog_serializer.PasswordResetRequestSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data['email']
+        user = Blog_models.User.objects.filter(email=email).first()
+        # Always return 200 to avoid user enumeration.
         if user:
-            user.otp = generate_numeric_otp()
-            uidb64 = user.pk
-            
-             # Generate a token and include it in the reset link sent via email
-            refresh = RefreshToken.for_user(user)
-            reset_token = str(refresh.access_token)
-
-            # Store the reset_token in the user model for later verification
-            user.reset_token = reset_token
-            user.save()
-
-            link = f"http://localhost:5173/create-new-password?otp={user.otp}&uidb64={uidb64}&reset_token={reset_token}"
-            
-            merge_data = {
-                'link': link, 
-                'username': user.username, 
-            }
-            subject = f"Password Reset Request"
-            text_body = render_to_string("email/password_reset.txt", merge_data)
-            html_body = render_to_string("email/password_reset.html", merge_data)
-            
-            msg = EmailMultiAlternatives(
-                subject=subject, from_email=settings.FROM_EMAIL,
-                to=[user.email], body=text_body
+            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+            token = default_token_generator.make_token(user)
+            link = (
+                f"{settings.SITE_URL}/reset-password?"
+                f"uidb64={uidb64}&token={token}"
             )
-            msg.attach_alternative(html_body, "text/html")
-            msg.send()
-        return user
-    
+            merge_data = {'link': link, 'username': user.username}
+            try:
+                msg = EmailMultiAlternatives(
+                    subject="Password Reset Request",
+                    body=render_to_string("email/password_reset.txt", merge_data),
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[user.email],
+                )
+                msg.attach_alternative(
+                    render_to_string("email/password_reset.html", merge_data),
+                    "text/html")
+                msg.send()
+            except Exception as exc:  # pragma: no cover
+                logger.error("Password reset email failed: %s", exc)
+        return Response({"message": "If that email exists, a reset link was sent."})
 
-class PasswordChangeView(generics.CreateAPIView):
+
+class PasswordResetConfirmView(generics.GenericAPIView):
     permission_classes = (AllowAny,)
-    serializer_class = Blog_serializer.UserSerializer
-    
-    def create(self, request, *args, **kwargs):
-        payload = request.data
-        
-        otp = payload['otp']
-        uidb64 = payload['uidb64']
-        password = payload['password']
+    serializer_class = Blog_serializer.PasswordResetConfirmSerializer
 
-        
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            uid = force_str(urlsafe_base64_decode(serializer.validated_data['email']))
+            user = Blog_models.User.objects.get(pk=uid)
+        except (TypeError, ValueError, OverflowError, Blog_models.User.DoesNotExist):
+            return Response({"message": "Invalid reset link."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        token = serializer.validated_data['token']
+        if not default_token_generator.check_token(user, token):
+            return Response({"message": "Invalid or expired reset link."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        user.set_password(serializer.validated_data['password'])
+        user.save()
+        return Response({"message": "Password reset successful."},
+                        status=status.HTTP_200_OK)
 
-        user = Blog_models.User.objects.get(id=uidb64, otp=otp)
-        if user:
-            user.set_password(password)
-            user.otp = ""
-            user.save()
-            
-            return Response( {"message": "Password Changed Successfully"}, status=status.HTTP_201_CREATED)
-        else:
-            return Response( {"message": "An Error Occured"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-######################## Post APIs ########################
-        
-
+# --------------------------------------------------------------------------
+# Posts / Categories
+# --------------------------------------------------------------------------
 class CategoryListAPIView(generics.ListAPIView):
     serializer_class = Blog_serializer.CategorySerializer
     permission_classes = [AllowAny]
+    queryset = Blog_models.Category.objects.all()
 
-    def get_queryset(self):
-        return Blog_models.Category.objects.all()
 
 class PostCategoryListAPIView(generics.ListAPIView):
     serializer_class = Blog_serializer.PostSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        category_slug = self.kwargs['category_slug'] 
-        category = Blog_models.Category.objects.get(slug=category_slug)
-        return Blog_models.Post.objects.filter(category=category, status="Active")
+        category_slug = self.kwargs['category_slug']
+        category = get_object_or_404(Blog_models.Category, slug=category_slug)
+        return (Blog_models.Post.objects
+                .filter(category=category, status="Active")
+                .select_related('user', 'category')
+                .prefetch_related('tags'))
+
 
 class PostListAPIView(generics.ListAPIView):
     serializer_class = Blog_serializer.PostSerializer
     permission_classes = [AllowAny]
 
     def get_queryset(self):
-        return Blog_models.Post.objects.all()
-    
+        return (Blog_models.Post.objects
+                .filter(status="Active")
+                .select_related('user', 'category')
+                .prefetch_related('tags'))
+
+
 class PostDetailAPIView(generics.RetrieveAPIView):
     serializer_class = Blog_serializer.PostSerializer
     permission_classes = [AllowAny]
 
     def get_object(self):
         slug = self.kwargs['slug']
-        post = Blog_models.Post.objects.get(slug=slug, status="Active")
-        post.view += 1
-        post.save()
+        post = get_object_or_404(Blog_models.Post, slug=slug, status="Active")
+        Blog_models.Post.objects.filter(pk=post.pk).update(view=post.view + 1)
         return post
-        
-class LikePostAPIView(APIView):
+
+
+class PostCreateAPIView(generics.CreateAPIView):
+    serializer_class = Blog_serializer.PostSerializer
+    permission_classes = [IsAuthenticated]
+
+    def perform_create(self, serializer):
+        serializer.save(user=self.request.user,
+                        profile=self.request.user.profile)
+
+
+class PostEditAPIView(generics.RetrieveUpdateDestroyAPIView):
+    serializer_class = Blog_serializer.PostSerializer
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        # Ownership enforced: only the author's posts are visible/editable.
+        return Blog_models.Post.objects.filter(user=self.request.user)
+
+
+# --------------------------------------------------------------------------
+# Social: like / bookmark / follow
+# --------------------------------------------------------------------------
+class LikePostAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'post_id': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-    )
+            properties={'post_id': openapi.Schema(type=openapi.TYPE_INTEGER)}))
     def post(self, request):
-        user_id = request.data['user_id']
-        post_id = request.data['post_id']
-
-        user = Blog_models.User.objects.get(id=user_id)
-        post = Blog_models.Post.objects.get(id=post_id)
-
-        # Check if post has already been liked by this user
+        post = get_object_or_404(Blog_models.Post, id=request.data.get('post_id'))
+        user = request.user
         if user in post.likes.all():
-            # If liked, unlike post
             post.likes.remove(user)
             return Response({"message": "Post Disliked"}, status=status.HTTP_200_OK)
-        else:
-            # If post hasn't been liked, like the post by adding user to set of poeple who have liked the post
-            post.likes.add(user)
-            
-            # Create Notification for Author
-            Blog_models.Notification.objects.create(
-                user=post.user,
-                post=post,
-                type="Like",
-            )
-            return Response({"message": "Post Liked"}, status=status.HTTP_201_CREATED)
-        
-class PostCommentAPIView(APIView):
+        post.likes.add(user)
+        Blog_models.Notification.objects.create(
+            user=post.user, post=post, type="Like")
+        return Response({"message": "Post Liked"}, status=status.HTTP_201_CREATED)
+
+
+class BookmarkPostAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={'post_id': openapi.Schema(type=openapi.TYPE_INTEGER)}))
+    def post(self, request):
+        post = get_object_or_404(Blog_models.Post, id=request.data.get('post_id'))
+        user = request.user
+        bookmark = Blog_models.Bookmark.objects.filter(post=post, user=user).first()
+        if bookmark:
+            bookmark.delete()
+            return Response({"message": "Post Un-Bookmarked"},
+                            status=status.HTTP_200_OK)
+        Blog_models.Bookmark.objects.create(user=user, post=post)
+        Blog_models.Notification.objects.create(
+            user=post.user, post=post, type="Bookmark")
+        return Response({"message": "Post Bookmarked"},
+                        status=status.HTTP_201_CREATED)
+
+
+class FollowAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    @swagger_auto_schema(
+        request_body=openapi.Schema(
+            type=openapi.TYPE_OBJECT,
+            properties={'following_id': openapi.Schema(type=openapi.TYPE_INTEGER)}))
+    def post(self, request):
+        following_id = request.data.get('following_id')
+        if not following_id:
+            return Response({"message": "following_id required."},
+                            status=status.HTTP_400_BAD_REQUEST)
+        if int(following_id) == request.user.id:
+            return Response({"message": "You cannot follow yourself"},
+                            status=status.HTTP_400_BAD_REQUEST)
+        following = get_object_or_404(Blog_models.User, id=following_id)
+        follow = Blog_models.Follow.objects.filter(
+            follower=request.user, following=following).first()
+        if follow:
+            follow.delete()
+            return Response({"message": "Unfollowed", "following": False},
+                            status=status.HTTP_200_OK)
+        Blog_models.Follow.objects.create(
+            follower=request.user, following=following)
+        Blog_models.Notification.objects.create(
+            user=following, type="Follow")
+        return Response({"message": "Followed", "following": True},
+                        status=status.HTTP_201_CREATED)
+
+
+class FollowersListAPIView(generics.ListAPIView):
+    serializer_class = Blog_serializer.FollowSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        user = get_object_or_404(Blog_models.User, id=self.kwargs['user_id'])
+        return Blog_models.Follow.objects.filter(following=user).select_related(
+            'follower', 'following')
+
+
+class FollowingListAPIView(generics.ListAPIView):
+    serializer_class = Blog_serializer.FollowSerializer
+    permission_classes = [AllowAny]
+
+    def get_queryset(self):
+        user = get_object_or_404(Blog_models.User, id=self.kwargs['user_id'])
+        return Blog_models.Follow.objects.filter(follower=user).select_related(
+            'follower', 'following')
+
+
+# --------------------------------------------------------------------------
+# Comments
+# --------------------------------------------------------------------------
+class PostCommentAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 'post_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'name': openapi.Schema(type=openapi.TYPE_STRING),
-                'email': openapi.Schema(type=openapi.TYPE_STRING),
                 'comment': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-    )
+                'parent_id': openapi.Schema(type=openapi.TYPE_INTEGER),
+            }))
     def post(self, request):
-        # Get data from request.data (frontend)
-        post_id = request.data['post_id']
-        name = request.data['name']
-        email = request.data['email']
-        comment = request.data['comment']
-
-        post = Blog_models.Post.objects.get(id=post_id)
-
-        # Create Comment
-        Blog_models.Comment.objects.create(
+        post = get_object_or_404(Blog_models.Post, id=request.data.get('post_id'))
+        parent = None
+        parent_id = request.data.get('parent_id')
+        if parent_id:
+            parent = get_object_or_404(Blog_models.Comment, id=parent_id, post=post)
+        comment = Blog_models.Comment.objects.create(
             post=post,
-            name=name,
-            email=email,
-            comment=comment,
+            parent=parent,
+            user=request.user,
+            name=request.user.full_name or request.user.username,
+            email=request.user.email,
+            comment=request.data.get('comment', ''),
         )
-
-        # Notification
         Blog_models.Notification.objects.create(
-            user=post.user,
-            post=post,
-            type="Comment",
-        )
-
-        # Return response back to the frontend
-        return Response({"message": "Commented Sent"}, status=status.HTTP_201_CREATED)
- 
-class BookmarkPostAPIView(APIView):
-    @swagger_auto_schema(
-        request_body=openapi.Schema(
-            type=openapi.TYPE_OBJECT,
-            properties={
-                'user_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-                'post_id': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-    )
-    
-    def post(self, request):
-        user_id = request.data['user_id']
-        post_id = request.data['post_id']
-
-        user = Blog_models.User.objects.get(id=user_id)
-        post = Blog_models.Post.objects.get(id=post_id)
-
-        bookmark = Blog_models.Bookmark.objects.filter(post=post, user=user).first()
-        if bookmark:
-            # Remove post from bookmark
-            bookmark.delete()
-            return Response({"message": "Post Un-Bookmarked"}, status=status.HTTP_200_OK)
-        else:
-            Blog_models.Bookmark.objects.create(
-                user=user,
-                post=post
-            )
-
-            # Notification
-            Blog_models.Notification.objects.create(
-                user=post.user,
-                post=post,
-                type="Bookmark",
-            )
-            return Response({"message": "Post Bookmarked"}, status=status.HTTP_201_CREATED)
+            user=post.user, post=post, type="Comment")
+        return Response({"message": "Comment submitted for moderation.",
+                         "id": comment.id},
+                        status=status.HTTP_201_CREATED)
 
 
-######################## Author Dashboard APIs ########################
-class DashboardStats(generics.ListAPIView):
-    serializer_class = Blog_serializer.AuthorStats
-    permission_classes = [AllowAny]
+# --------------------------------------------------------------------------
+# Dashboard (owner-only)
+# --------------------------------------------------------------------------
+class DashboardStats(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+    serializer_class = Blog_serializer.AuthorStatsSerializer
 
-    def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = Blog_models.User.objects.get(id=user_id)
+    def get(self, request, *args, **kwargs):
+        user = request.user
+        posts_qs = Blog_models.Post.objects.filter(user=user)
+        stats = posts_qs.aggregate(
+            views=Sum("view"), posts=Count("id"),
+            likes=Count("likes"))
+        followers = Blog_models.Follow.objects.filter(following=user).count()
+        return Response({
+            "views": stats["views"] or 0,
+            "posts": stats["posts"] or 0,
+            "likes": stats["likes"] or 0,
+            "followers": followers,
+        })
 
-        views = Blog_models.Post.objects.filter(user=user).aggregate(view=Sum("view"))['view']
-        posts = Blog_models.Post.objects.filter(user=user).count()
-        likes = Blog_models.Post.objects.filter(user=user).aggregate(total_likes=Sum("likes"))['total_likes']
-        bookmarks = Blog_models.Bookmark.objects.all().count()
-
-        return [{
-            "views": views,
-            "posts": posts,
-            "likes": likes,
-            "bookmarks": bookmarks,
-        }]
-    
-    def list(self, request, *args, **kwargs):
-        querset = self.get_queryset()
-        serializer = self.get_serializer(querset, many=True)
-        return Response(serializer.data)
 
 class DashboardPostLists(generics.ListAPIView):
     serializer_class = Blog_serializer.PostSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = Blog_models.User.objects.get(id=user_id)
+        return (Blog_models.Post.objects
+                .filter(user=self.request.user)
+                .select_related('category')
+                .prefetch_related('tags'))
 
-        return Blog_models.Post.objects.filter(user=user).order_by("-id")
 
 class DashboardCommentLists(generics.ListAPIView):
+    """Comments on the authenticated author's posts only."""
     serializer_class = Blog_serializer.CommentSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Blog_models.Comment.objects.all()
+        return (Blog_models.Comment.objects
+                .filter(post__user=self.request.user)
+                .select_related('post', 'user'))
+
 
 class DashboardNotificationLists(generics.ListAPIView):
     serializer_class = Blog_serializer.NotificationSerializer
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        user_id = self.kwargs['user_id']
-        user = Blog_models.User.objects.get(id=user_id)
+        return Blog_models.Notification.objects.filter(
+            seen=False, user=self.request.user).select_related('post')
 
-        return Blog_models.Notification.objects.filter(seen=False, user=user)
 
-class DashboardMarkNotiSeenAPIView(APIView):
+class DashboardMarkNotiSeenAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
-            properties={
-                'noti_id': openapi.Schema(type=openapi.TYPE_INTEGER),
-            },
-        ),
-    )
+            properties={'noti_id': openapi.Schema(type=openapi.TYPE_INTEGER)}))
     def post(self, request):
-        noti_id = request.data['noti_id']
-        noti = Blog_models.Notification.objects.get(id=noti_id)
-
+        noti = get_object_or_404(
+            Blog_models.Notification, id=request.data.get('noti_id'),
+            user=request.user)
         noti.seen = True
         noti.save()
+        return Response({"message": "Notification marked as seen."})
 
-        return Response({"message": "Noti Marked As Seen"}, status=status.HTTP_200_OK)
 
-class DashboardPostCommentAPIView(APIView):
+class DashboardReplyCommentAPIView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
     @swagger_auto_schema(
         request_body=openapi.Schema(
             type=openapi.TYPE_OBJECT,
             properties={
                 'comment_id': openapi.Schema(type=openapi.TYPE_INTEGER),
                 'reply': openapi.Schema(type=openapi.TYPE_STRING),
-            },
-        ),
-    )
+            }))
     def post(self, request):
-        comment_id = request.data['comment_id']
-        reply = request.data['reply']
-
-        print("comment_id =======", comment_id)
-        print("reply ===========", reply)
-
-        comment = Blog_models.Comment.objects.get(id=comment_id)
-        comment.reply = reply
+        comment = get_object_or_404(
+            Blog_models.Comment, id=request.data.get('comment_id'),
+            post__user=request.user)
+        comment.reply = request.data.get('reply', '')
         comment.save()
-
-        return Response({"message": "Comment Response Sent"}, status=status.HTTP_201_CREATED)
-    
-class DashboardPostCreateAPIView(generics.CreateAPIView):
-    serializer_class = Blog_serializer.PostSerializer
-    permission_classes = [AllowAny]
-
-    def create(self, request, *args, **kwargs):
-        print(request.data)
-        user_id = request.data.get('user_id')
-        title = request.data.get('title')
-        image = request.data.get('image')
-        description = request.data.get('description')
-        tags = request.data.get('tags')
-        category_id = request.data.get('category')
-        post_status = request.data.get('post_status')
-
-        print(user_id)
-        print(title)
-        print(image)
-        print(description)
-        print(tags)
-        print(category_id)
-        print(post_status)
-
-        user = Blog_models.User.objects.get(id=user_id)
-        category = Blog_models.Category.objects.get(id=category_id)
-
-        post = Blog_models.Post.objects.create(
-            user=user,
-            title=title,
-            image=image,
-            description=description,
-            tags=tags,
-            category=category,
-            status=post_status
-        )
-
-        return Response({"message": "Post Created Successfully"}, status=status.HTTP_201_CREATED)
-
-class DashboardPostEditAPIView(generics.RetrieveUpdateDestroyAPIView):
-    serializer_class = Blog_serializer.PostSerializer
-    permission_classes = [AllowAny]
-
-    def get_object(self):
-        user_id = self.kwargs['user_id']
-        post_id = self.kwargs['post_id']
-        user = Blog_models.User.objects.get(id=user_id)
-        return Blog_models.Post.objects.get(user=user, id=post_id)
-
-    def update(self, request, *args, **kwargs):
-        post_instance = self.get_object()
-
-        title = request.data.get('title')
-        image = request.data.get('image')
-        description = request.data.get('description')
-        tags = request.data.get('tags')
-        category_id = request.data.get('category')
-        post_status = request.data.get('post_status')
-
-        print(title)
-        print(image)
-        print(description)
-        print(tags)
-        print(category_id)
-        print(post_status)
-
-        category = Blog_models.Category.objects.get(id=category_id)
-
-        post_instance.title = title
-        if image != "undefined":
-            post_instance.image = image
-        post_instance.description = description
-        post_instance.tags = tags
-        post_instance.category = category
-        post_instance.status = post_status
-        post_instance.save()
-
-        return Response({"message": "Post Updated Successfully"}, status=status.HTTP_200_OK)
+        return Response({"message": "Reply sent."})
 
 
-{
-    "title": "New post",
-    "image": "",
-    "description": "lorem",
-    "tags": "tags, here",
-    "category_id": 1,
-    "post_status": "Active"
-}
+class LogoutView(generics.GenericAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        try:
+            token = RefreshToken(request.data.get('refresh'))
+            token.blacklist()
+        except Exception:
+            pass
+        return Response({"message": "Logged out."})
+
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def api_root(request):
+    return Response({"status": "Blog API online."})
