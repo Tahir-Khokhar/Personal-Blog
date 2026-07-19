@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>New Post: {{ post.title }}</title>
+</head>
+<body style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+    <h1 style="color: #333;">New Blog Post</h1>
+    <p>Hello,</p>
+    <p>We have published a new post that we think you'll love:</p>
+    <h2 style="color: #555;">{{ post.title }}</h2>
+    <p>{{ post.description|truncatewords:30|safe }}</p>
+    <p>
+        <a href="{{ site_url }}{% url 'post_detail' post.slug %}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
+            Read Full Post
+        </a>
+    </p>
+    <p style="color: #777; font-size: 14px;">You are receiving this email because you subscribed to our newsletter.</p>
+</body>
+</html>
