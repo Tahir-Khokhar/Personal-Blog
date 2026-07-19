@@ -1,0 +1,133 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h1 class="mb-4">Dashboard</h1>
+    </div>
+</div>
+
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card text-white bg-primary">
+            <div class="card-body">
+                <h5 class="card-title">Total Posts</h5>
+                <p class="card-text display-6">{{ stats.total_posts }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-success">
+            <div class="card-body">
+                <h5 class="card-title">Published</h5>
+                <p class="card-text display-6">{{ stats.published_posts }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-info">
+            <div class="card-body">
+                <h5 class="card-title">Total Views</h5>
+                <p class="card-text display-6">{{ stats.total_views }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-warning">
+            <div class="card-body">
+                <h5 class="card-title">Total Likes</h5>
+                <p class="card-text display-6">{{ stats.total_likes }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-danger">
+            <div class="card-body">
+                <h5 class="card-title">Total Comments</h5>
+                <p class="card-text display-6">{{ stats.total_comments }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-secondary">
+            <div class="card-body">
+                <h5 class="card-title">Followers</h5>
+                <p class="card-text display-6">{{ stats.followers_count }}</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card text-white bg-dark">
+            <div class="card-body">
+                <h5 class="card-title">Following</h5>
+                <p class="card-text display-6">{{ stats.following_count }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Posts</h5>
+                <a href="{% url 'dashboard_posts' %}" class="btn btn-sm btn-primary">View All</a>
+            </div>
+            <div class="card-body">
+                {% for post in recent_posts %}
+                <div class="d-flex justify-content-between align-items-center py-2 {% if not forloop.last %}border-bottom{% endif %}">
+                    <div>
+                        <a href="{% url 'post_detail' post.slug %}" class="text-decoration-none fw-bold">{{ post.title }}</a>
+                        <div class="small text-muted">{{ post.created_at|date:"M d, Y" }}</div>
+                    </div>
+                    <span class="badge bg-{% if post.status == 'published' %}success{% else %}secondary{% endif %}">{{ post.status }}</span>
+                </div>
+                {% empty %}
+                <p class="text-muted">No posts yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Recent Comments</h5>
+                <a href="{% url 'dashboard_comments' %}" class="btn btn-sm btn-primary">View All</a>
+            </div>
+            <div class="card-body">
+                {% for comment in recent_comments %}
+                <div class="py-2 {% if not forloop.last %}border-bottom{% endif %}">
+                    <p class="mb-1 small">{{ comment.comment|truncatewords:15 }}</p>
+                    <small class="text-muted">By {{ comment.name }} on {{ comment.created_at|date:"M d, Y" }}</small>
+                </div>
+                {% empty %}
+                <p class="text-muted">No comments yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row g-3 mt-1">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Notifications</h5>
+                <a href="{% url 'notifications' %}" class="btn btn-sm btn-primary">View All</a>
+            </div>
+            <div class="card-body">
+                {% for noti in unread_notifications %}
+                <div class="py-2 {% if not forloop.last %}border-bottom{% endif %}">
+                    <p class="mb-1 small">{{ noti.get_type_display }}: {{ noti.post.title|default:'No post' }}</p>
+                    <small class="text-muted">{{ noti.created_at|date:"M d, Y H:i" }}</small>
+                </div>
+                {% empty %}
+                <p class="text-muted">No new notifications.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
