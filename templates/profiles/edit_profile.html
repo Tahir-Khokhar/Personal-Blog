@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+{% block title %}Edit Profile{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-8">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h1 class="h4 mb-0">Edit Profile</h1>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Profile Picture</label>
+                            {% if profile.profile_picture %}
+                            <div class="mb-2">
+                                <img src="{{ profile.profile_picture.url }}" alt="Profile" class="img-thumbnail" style="max-width: 160px;">
+                            </div>
+                            {% endif %}
+                            <input class="form-control" type="file" name="profile_picture" accept="image/*">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Cover Photo</label>
+                            {% if profile.cover_photo %}
+                            <div class="mb-2">
+                                <img src="{{ profile.cover_photo.url }}" alt="Cover" class="img-thumbnail" style="max-width: 160px;">
+                            </div>
+                            {% endif %}
+                            <input class="form-control" type="file" name="cover_photo" accept="image/*">
+                        </div>
+                        <div class="col-md-12">
+                            <label class="form-label">Bio</label>
+                            <textarea class="form-control" name="bio" rows="3">{{ profile.bio|default:'' }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Location</label>
+                            <input class="form-control" type="text" name="location" value="{{ profile.location|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Website</label>
+                            <input class="form-control" type="url" name="website" value="{{ profile.website|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Date of Birth</label>
+                            <input class="form-control" type="date" name="date_of_birth" value="{{ profile.date_of_birth|default:'' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Gender</label>
+                            <select class="form-control" name="gender">
+                                <option value="">Select gender</option>
+                                <option value="male" {% if profile.gender == 'male' %}selected{% endif %}>Male</option>
+                                <option value="female" {% if profile.gender == 'female' %}selected{% endif %}>Female</option>
+                                <option value="other" {% if profile.gender == 'other' %}selected{% endif %}>Other</option>
+                                <option value="prefer_not_to_say" {% if profile.gender == 'prefer_not_to_say' %}selected{% endif %}>Prefer not to say</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mt-4">
+                        <button class="btn btn-primary" type="submit">Save Changes</button>
+                        <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Cancel</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
