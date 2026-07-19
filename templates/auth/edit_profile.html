@@ -1,0 +1,65 @@
+{% extends 'base.html' %}
+{% block title %}Edit Profile{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-lg-8">
+    <div class="card shadow-sm">
+      <div class="card-header">
+        <h1 class="h4 mb-0">Edit Profile</h1>
+      </div>
+      <div class="card-body">
+        {% if messages %}
+          {% for message in messages %}
+            <div class="alert alert-{{ message.tags|default:'info' }}" role="alert">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+
+        <form method="post" enctype="multipart/form-data">
+          {% csrf_token %}
+          <div class="row g-3">
+            <div class="col-md-4">
+              <label class="form-label">Profile picture</label>
+              {% if profile.image %}
+                <div class="mb-2">
+                  <img src="{{ profile.image.url }}" alt="Profile" class="img-thumbnail" style="max-width: 160px;">
+                </div>
+              {% endif %}
+              <input class="form-control" type="file" name="image" accept="image/*">
+            </div>
+            <div class="col-md-8">
+              <label class="form-label">Full name</label>
+              <input class="form-control" type="text" name="full_name" value="{{ form.full_name.value|default:request.user.full_name }}">
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">Bio</label>
+              <textarea class="form-control" name="bio" rows="3">{{ form.bio.value|default:'' }}</textarea>
+            </div>
+            <div class="col-md-12">
+              <label class="form-label">About</label>
+              <textarea class="form-control" name="about" rows="3">{{ form.about.value|default:'' }}</textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Country</label>
+              <input class="form-control" type="text" name="country" value="{{ form.country.value|default:'' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Facebook</label>
+              <input class="form-control" type="text" name="facebook" value="{{ form.facebook.value|default:'' }}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Twitter</label>
+              <input class="form-control" type="text" name="twitter" value="{{ form.twitter.value|default:'' }}">
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button class="btn btn-primary" type="submit">Save changes</button>
+            <a class="btn btn-outline-secondary" href="{% url 'dashboard' %}">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
