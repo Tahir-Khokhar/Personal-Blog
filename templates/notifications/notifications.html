@@ -1,0 +1,33 @@
+{% extends 'base.html' %}
+{% block title %}Notifications{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1>Notifications</h1>
+            <form method="post" action="{% url 'mark_all_notifications_read' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-sm btn-outline-primary">Mark all as read</button>
+            </form>
+        </div>
+        {% for noti in notifications %}
+        <div class="card mb-2 {% if not noti.is_read %}border-primary{% endif %}">
+            <div class="card-body py-2">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <span class="badge bg-{% if noti.type == 'like' %}danger{% elif noti.type == 'comment' %}info{% elif noti.type == 'follow' %}success{% else %}secondary{% endif %}">{{ noti.get_type_display }}</span>
+                        {% if noti.post %}
+                        <a href="{% url 'post_detail' noti.post.slug %}" class="text-decoration-none">{{ noti.post.title }}</a>
+                        {% endif %}
+                    </div>
+                    <small class="text-muted">{{ noti.created_at|date:"M d, Y H:i" }}</small>
+                </div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted">No notifications yet.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
