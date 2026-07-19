@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ author.full_name|default:author.username }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-3">
+        <div class="card shadow-sm">
+            <div class="card-body text-center">
+                {% if author.profile.profile_picture %}
+                <img src="{{ author.profile.profile_picture.url }}" class="img-thumbnail rounded-circle" style="width: 160px; height: 160px; object-fit: cover;" alt="{{ author.username }}" />
+                {% else %}
+                <div class="bg-light rounded-circle d-flex align-items-center justify-content-center mx-auto" style="width: 160px; height: 160px;">
+                    <i class="bi bi-person text-muted" style="font-size: 3rem;"></i>
+                </div>
+                {% endif %}
+                <h3 class="mt-3 mb-1">{{ author.full_name }}</h3>
+                <div class="text-muted">@{{ author.username }}</div>
+                <div class="mt-3 d-flex justify-content-center gap-3">
+                    <div class="text-center">
+                        <div class="fw-bold">{{ followers_count }}</div>
+                        <div class="small text-muted">Followers</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="fw-bold">{{ following_count }}</div>
+                        <div class="small text-muted">Following</div>
+                    </div>
+                    <div class="text-center">
+                        <div class="fw-bold">{{ posts_count }}</div>
+                        <div class="small text-muted">Posts</div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    {% if request.user.is_authenticated and request.user.id != author.id %}
+                        <form method="post" action="{% url 'toggle_follow' author.username %}" class="d-inline">
+                            {% csrf_token %}
+                            <button type="submit" class="btn {% if is_following %}btn-outline-danger{% else %}btn-primary{% endif %} w-100">
+                                {% if is_following %}Unfollow{% else %}Follow{% endif %}
+                            </button>
+                        </form>
+                    {% elif request.user.is_authenticated and request.user.id == author.id %}
+                        <a class="btn btn-primary w-100" href="{% url 'edit_profile' %}">Edit profile</a>
+                    {% else %}
+                        <a class="btn btn-primary w-100" href="{% url 'login' %}">Login to follow</a>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-9">
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <h4 class="mb-3">Bio</h4>
+                <p class="text-muted mb-0">{{ profile.bio|default:'No bio yet.' }}</p>
+            </div>
+        </div>
+
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <h4 class="mb-3">Recent Posts</h4>
+                {% for post in posts %}
+                <div class="mb-3">
+                    <a class="text-decoration-none" href="{% url 'post_detail' post.slug %}">
+                        <div class="fw-bold">{{ post.title }}</div>
+                    </a>
+                    <div class="small text-muted">{{ post.created_at|date:"M d, Y" }}</div>
+                </div>
+                {% empty %}
+                <p class="text-muted">No posts yet.</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
