@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+{% block title %}Verify OTP{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-6">
+        <div class="card shadow-sm">
+            <div class="card-header">
+                <h1 class="h4 mb-0">Verify OTP</h1>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Enter the 6-digit OTP sent to your email. OTP expires in 5 minutes.</p>
+                <form method="post" novalidate>
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">OTP</label>
+                        <input class="form-control" type="text" name="otp" maxlength="6" required autofocus>
+                    </div>
+                    <button class="btn btn-primary w-100" type="submit">Verify OTP</button>
+                </form>
+                <div class="text-center mt-3">
+                    <a href="{% url 'forgot_password' %}">Resend OTP</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
