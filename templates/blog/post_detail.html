@@ -1,0 +1,172 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}{{ post.title }}{% endblock %}
+
+{% block extra_js %}
+<script>
+  window.__POST_ID__ = {{ post.id }};
+</script>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <article>
+            <header class="mb-4">
+                <h1 class="fw-bolder mb-1">{{ post.title }}</h1>
+                <div class="d-flex flex-wrap gap-2 justify-content-between align-items-center mb-3">
+                    {% if post.category %}
+                    <span class="badge bg-primary">{{ post.category.title }}</span>
+                    {% endif %}
+                    <small class="text-muted">By {{ post.user.full_name|default:post.user.username }} on {{ post.created_at|date:"M d, Y" }}</small>
+                </div>
+                {% if post.tags.all %}
+                <div class="mb-3">
+                    {% for tag in post.tags.all %}
+                    <a href="{% url 'search' %}?tag={{ tag.name }}" class="badge bg-secondary text-decoration-none">{{ tag.name }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </header>
+
+            {% if post.featured_image %}
+            <img src="{{ post.featured_image.url }}" class="img-fluid rounded mb-4" alt="{{ post.title }}">
+            {% endif %}
+
+            <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                {% if user.is_authenticated %}
+                <form method="post" action="{% url 'toggle_like' post.slug %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn {% if is_liked %}btn-danger{% else %}btn-outline-danger{% endif %}">
+                        <i class="bi bi-heart{% if not is_liked %}-fill{% endif %}"></i> {% if is_liked %}Unlike{% else %}Like{% endif %}
+                    </button>
+                </form>
+                <form method="post" action="{% url 'toggle_bookmark' post.slug %}" class="d-inline">
+                    {% csrf_token %}
+                    <button type="submit" class="btn {% if is_bookmarked %}btn-success{% else %}btn-outline-success{% endif %}">
+                        <i class="bi bi-bookmark{% if not is_bookmarked %}-fill{% endif %}"></i> {% if is_bookmarked %}Saved{% else %}Save{% endif %}
+                    </button>
+                </form>
+                {% else %}
+                <a class="btn btn-primary" href="{% url 'login' %}?next={{ request.path }}">Login to like/save</a>
+                {% endif %}
+
+                <button type="button" class="btn btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#shareModal">
+                    <i class="bi bi-share"></i> Share
+                </button>
+            </div>
+
+            <div class="mb-5">
+                {{ post.content|safe }}
+            </div>
+        </article>
+
+        <section class="mb-5">
+            <div class="card bg-light">
+                <div class="card-body">
+                    <h5 class="card-title">Comments ({{ comments|length }})</h5>
+
+                    {% if user.is_authenticated %}
+                    <form method="post" action="{% url 'add_comment' post.slug %}" class="mb-3">
+                        {% csrf_token %}
+                        <div class="mb-2">
+                            <textarea name="comment" class="form-control" rows="3" placeholder="Write your comment..." required></textarea>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Post Comment</button>
+                    </form>
+                    {% else %}
+                    <div class="alert alert-info">Please <a href="{% url 'login' %}?next={{ request.path }}">login</a> to comment.</div>
+                    {% endif %}
+
+                    {% for comment in comments %}
+                    <div class="card mb-2">
+                        <div class="card-body py-2">
+                            <h6 class="card-subtitle mb-1">{{ comment.name }}</h6>
+                            <p class="card-text small">{{ comment.comment }}</p>
+                            <small class="text-muted">{{ comment.created_at|date:"M d, Y H:i" }}</small>
+                            {% if user.is_authenticated and user == comment.user %}
+                            <div class="mt-2">
+                                <a href="{% url 'edit_comment' comment.id %}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                <form method="post" action="{% url 'delete_comment' comment.id %}" class="d-inline">
+                                    {% csrf_token %}
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this comment?')">Delete</button>
+                                </form>
+                            </div>
+                            {% endif %}
+                            {% if comment.replies.exists %}
+                            <div class="mt-2 ms-3 p-2 bg-white rounded border">
+                                <strong class="small">Replies</strong>
+                                {% for reply in comment.replies.all %}
+                                <div class="mt-2">
+                                    <div class="fw-semibold small">{{ reply.name }}</div>
+                                    <div class="small text-muted">{{ reply.comment }}</div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% empty %}
+                    <p class="text-muted">No comments yet. Be the first to comment!</p>
+                    {% endfor %}
+                </div>
+            </div>
+        </section>
+    </div>
+
+    <div class="col-lg-4">
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Subscribe</h5>
+                <p class="card-text">Get the latest posts delivered to your inbox.</p>
+                <a href="#" class="btn btn-primary w-100">Subscribe Now</a>
+            </div>
+        </div>
+
+        {% if related_posts %}
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Related Posts</h5>
+                <ul class="list-unstyled">
+                    {% for related in related_posts %}
+                    <li class="mb-2">
+                        <a href="{% url 'post_detail' related.slug %}" class="text-decoration-none">{{ related.title }}</a>
+                        <small class="text-muted d-block">{{ related.created_at|date:"M d, Y" }}</small>
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{# Share Modal #}
+<div class="modal fade" id="shareModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Share this post</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                {% with shareUrl=request.build_absolute_uri %}
+                <div class="input-group mb-3">
+                    <input type="text" class="form-control" value="{{ shareUrl }}" readonly aria-label="Share URL">
+                    <button class="btn btn-outline-primary" type="button" id="copyLinkBtn">Copy</button>
+                </div>
+
+                <div class="d-flex flex-wrap gap-2">
+                    <a class="btn btn-primary" href="https://www.facebook.com/sharer/sharer.php?u={{ shareUrl|urlencode }}" target="_blank">Facebook</a>
+                    <a class="btn btn-dark" href="https://twitter.com/intent/tweet?url={{ shareUrl|urlencode }}&text={{ post.title|urlencode }}" target="_blank">X/Twitter</a>
+                    <a class="btn btn-success" href="https://wa.me/?text={{ shareUrl|urlencode }}" target="_blank">WhatsApp</a>
+                    <a class="btn btn-info" href="https://t.me/share/url?url={{ shareUrl|urlencode }}&text={{ post.title|urlencode }}" target="_blank">Telegram</a>
+                </div>
+                {% endwith %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
