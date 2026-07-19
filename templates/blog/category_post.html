@@ -1,0 +1,44 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Category: {{ category.title }}{% endblock %}
+
+{% block content %}
+<h1 class="mb-4">Category: {{ category.title }}</h1>
+<p class="text-muted">{{ category.post_count }} posts</p>
+
+{% for post in posts %}
+<article class="card mb-4 shadow-sm">
+    {% if post.image %}
+    <img src="{{ post.image.url }}" class="card-img-top" alt="{{ post.title }}" style="height: 300px; object-fit: cover;">
+    {% endif %}
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <small class="text-muted">{{ post.date|date:"M d, Y" }}</small>
+            <small class="text-muted">By {{ post.user.full_name }}</small>
+        </div>
+        <h2 class="card-title h4">
+            <a href="{% url 'post_detail' post.slug %}" class="text-decoration-none text-dark">{{ post.title }}</a>
+        </h2>
+        <p class="card-text">{{ post.description|truncatewords:30|safe }}</p>
+        <a href="{% url 'post_detail' post.slug %}" class="btn btn-primary">Read More</a>
+    </div>
+</article>
+{% empty %}
+<div class="alert alert-info">No posts in this category yet.</div>
+{% endfor %}
+
+{% if is_paginated %}
+<nav aria-label="Page navigation">
+    <ul class="pagination">
+        {% if page_obj.has_previous %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.previous_page_number }}">Previous</a></li>
+        {% endif %}
+        <li class="page-item active"><span class="page-link">{{ page_obj.number }}</span></li>
+        {% if page_obj.has_next %}
+        <li class="page-item"><a class="page-link" href="?page={{ page_obj.next_page_number }}">Next</a></li>
+        {% endif %}
+    </ul>
+</nav>
+{% endif %}
+{% endblock %}
