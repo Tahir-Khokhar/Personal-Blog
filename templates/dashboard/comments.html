@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}Comments{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <h1 class="mb-4">Comments on My Posts</h1>
+        {% for comment in comments %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-1">{{ comment.name }}</h6>
+                <p class="card-text">{{ comment.comment }}</p>
+                <small class="text-muted">On: {{ comment.post.title }}</small>
+                <div class="small text-muted">{{ comment.created_at|date:"M d, Y H:i" }}</div>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted">No comments yet.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
