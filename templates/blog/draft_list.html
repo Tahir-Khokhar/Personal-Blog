@@ -1,0 +1,22 @@
+{% extends 'base.html' %}
+{% block title %}My Drafts{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-lg-8">
+        <h1 class="mb-4">My Drafts</h1>
+        {% for draft in drafts %}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h5 class="card-title">{{ draft.title }}</h5>
+                <p class="text-muted">{{ draft.created_at|date:"M d, Y" }}</p>
+                <a href="{% url 'post_edit' draft.slug %}" class="btn btn-primary btn-sm">Edit</a>
+                <a href="{% url 'publish_draft' draft.slug %}" class="btn btn-success btn-sm">Publish</a>
+            </div>
+        </div>
+        {% empty %}
+        <p class="text-muted">No drafts yet.</p>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}
