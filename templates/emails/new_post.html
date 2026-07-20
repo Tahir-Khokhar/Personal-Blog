@@ -9,12 +9,13 @@
     <p>Hello,</p>
     <p>We have published a new post that we think you'll love:</p>
     <h2 style="color: #555;">{{ post.title }}</h2>
-    <p>{{ post.description|truncatewords:30|safe }}</p>
+    <p>{{ post.excerpt|default:post.content|truncatewords:30 }}</p>
     <p>
         <a href="{{ site_url }}{% url 'post_detail' post.slug %}" style="background-color: #007bff; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">
             Read Full Post
         </a>
     </p>
     <p style="color: #777; font-size: 14px;">You are receiving this email because you subscribed to our newsletter.</p>
+    <p style="color: #777; font-size: 14px;"><a href="{{ unsubscribe_url }}">Unsubscribe</a></p>
 </body>
 </html>
