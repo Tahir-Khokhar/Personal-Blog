@@ -1,0 +1,41 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Comment Moderation{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-9">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <h1 class="h3 mb-0">Comment Moderation Queue</h1>
+            <a href="{% url 'dashboard' %}" class="btn btn-outline-secondary btn-sm">Back to Dashboard</a>
+        </div>
+
+        {% if comments %}
+            {% for comment in comments %}
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <h6 class="card-subtitle mb-1">{{ comment.name }}</h6>
+                        <small class="text-muted">{{ comment.created_at|date:"M d, Y H:i" }}</small>
+                    </div>
+                    <p class="card-text mt-2">{{ comment.comment }}</p>
+                    <div class="small text-muted mb-2">
+                        On post:
+                        <a href="{% url 'post_detail' comment.post.slug %}">{{ comment.post.title }}</a>
+                    </div>
+                    <form method="post" action="{% url 'moderate_comment' comment.id %}" class="d-inline">
+                        {% csrf_token %}
+                        <button type="submit" name="action" value="approve" class="btn btn-success btn-sm">Approve</button>
+                        <button type="submit" name="action" value="disapprove" class="btn btn-warning btn-sm">Disapprove</button>
+                        <button type="submit" name="action" value="delete" class="btn btn-danger btn-sm" onclick="return confirm('Delete this comment?');">Delete</button>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        {% else %}
+            <div class="alert alert-info">No comments are awaiting moderation. 🎉</div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
