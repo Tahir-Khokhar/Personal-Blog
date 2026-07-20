@@ -1,0 +1,15 @@
+/* Minimal styling layer for app-specific UI */
+
+[data-like-post-id] { cursor: pointer; }
+[data-bookmark-post-id] { cursor: pointer; }
+
+/* Share modal helper */
+#shareModal .share-btn {
+  min-width: 44px;
+}
+
+/* Reading-time badge */
+#readingTimeOutput {
+  font-size: 0.95rem;
+}
+
