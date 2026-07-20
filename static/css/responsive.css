@@ -1,0 +1,35 @@
+/* Responsive styles */
+
+@media (max-width: 768px) {
+    .container {
+        padding-left: 1rem;
+        padding-right: 1rem;
+    }
+
+    .card-img-top {
+        height: 200px !important;
+    }
+
+    .profile-avatar {
+        width: 120px;
+        height: 120px;
+    }
+
+    .navbar-nav {
+        padding: 1rem 0;
+    }
+
+    .display-6 {
+        font-size: 1.5rem;
+    }
+}
+
+@media (max-width: 576px) {
+    .btn-group-vertical-sm {
+        flex-direction: column;
+    }
+
+    .card-title {
+        font-size: 1.1rem;
+    }
+}
